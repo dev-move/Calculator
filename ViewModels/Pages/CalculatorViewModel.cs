@@ -17,9 +17,8 @@ namespace Calculator.ViewModels.Pages
         [ObservableProperty]
         private string expressionText = string.Empty;
 
-        private decimal CurrentValue => decimal.TryParse(DisplayText, 
-            NumberStyles.AllowLeadingSign | NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var v)
-    ? v : 0m;
+        private decimal CurrentValue => decimal.TryParse(DisplayText, NumberStyles.AllowLeadingSign | NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint,
+        CultureInfo.InvariantCulture, out var v) ? v : 0m;
 
         #endregion
 
@@ -30,46 +29,45 @@ namespace Calculator.ViewModels.Pages
             if (string.IsNullOrWhiteSpace(key))
                 return;
 
-            if (key == "00")
-            {
-                if (DisplayText == "Error")
-                {
-                    Clear();
-                    DisplayText = "0";
-                    _isNewInput = false;
-                    return;
-                }
-
-                if (_isNewInput || DisplayText == "0")
-                {
-                    DisplayText = "0";
-                    _isNewInput = false;
-                    return;
-                }
-
-                DisplayText += "00";
-                _isNewInput = false;
-                return;
-            }
+            string raw = StripCommas(DisplayText);
 
             if (DisplayText == "Error")
             {
-                if (key.Length == 1 && char.IsDigit(key[0]))
+                if (key is "00" or "." || (key.Length == 1 && char.IsDigit(key[0])))
                 {
                     Clear();
-                    DisplayText = key;
-                    _isNewInput = false;
+                    raw = "0";
                 }
+                else
+                {
+                    return;
+                }
+            }
+
+            if (key == "00")
+            {
+                if (_isNewInput || raw == "0")
+                {
+                    raw = "0";
+                }
+                else
+                {
+                    raw += "00";
+                }
+
+                SetDisplayFromRaw(raw);
+                _isNewInput = false;
                 return;
             }
 
             if (key.Length == 1 && char.IsDigit(key[0]))
             {
-                if (_isNewInput || DisplayText == "0")
-                    DisplayText = key;
+                if (_isNewInput || raw == "0")
+                    raw = key;
                 else
-                    DisplayText += key;
+                    raw += key;
 
+                SetDisplayFromRaw(raw);
                 _isNewInput = false;
                 return;
             }
@@ -77,27 +75,26 @@ namespace Calculator.ViewModels.Pages
             if (key == ".")
             {
                 if (_isNewInput)
-                {
-                    DisplayText = "0.";
-                    _isNewInput = false;
-                    return;
-                }
+                    raw = "0.";
 
-                if (!DisplayText.Contains("."))
-                    DisplayText += ".";
+                if (!raw.Contains(".", StringComparison.Ordinal))
+                    raw += ".";
+
+                SetDisplayFromRaw(raw);
+                _isNewInput = false;
                 return;
             }
 
             if (key == "±")
             {
-                if (DisplayText == "0" || DisplayText == "Error")
+                if (raw == "0" || raw == "0." || raw == "")
                     return;
 
-                if (DisplayText.StartsWith("-", StringComparison.Ordinal))
-                    DisplayText = DisplayText[1..];
-                else
-                    DisplayText = "-" + DisplayText;
+                raw = raw.StartsWith("-", StringComparison.Ordinal)
+                    ? raw[1..]
+                    : "-" + raw;
 
+                SetDisplayFromRaw(raw);
                 return;
             }
 
@@ -106,13 +103,19 @@ namespace Calculator.ViewModels.Pages
                 if (_isNewInput)
                     return;
 
-                if (DisplayText.Length <= 1 || (DisplayText.Length == 2 && DisplayText.StartsWith("-")))
-                    DisplayText = "0";
+                if (raw.Length <= 1 || (raw.Length == 2 && raw.StartsWith("-", StringComparison.Ordinal)))
+                    raw = "0";
                 else
-                    DisplayText = DisplayText[..^1];
+                    raw = raw[..^1];
+
+                if (raw == "" || raw == "-")
+                    raw = "0";
+
+                SetDisplayFromRaw(raw);
                 return;
             }
         }
+
 
 
 
@@ -148,7 +151,7 @@ namespace Calculator.ViewModels.Pages
 
 
             ExpressionText = $"{_storedValue.ToString(CultureInfo.InvariantCulture)} {op}";
-            DisplayText = _storedValue.ToString(CultureInfo.InvariantCulture);
+            DisplayText = FormatWithCommas(_storedValue.ToString(CultureInfo.InvariantCulture));
 
             _isNewInput = true;
 
@@ -177,7 +180,7 @@ namespace Calculator.ViewModels.Pages
             ExpressionText =
                 $"{_storedValue.ToString(CultureInfo.InvariantCulture)} {OpToSymbol(_pendingOp)} {b.ToString(CultureInfo.InvariantCulture)} =";
 
-            DisplayText = result.ToString(CultureInfo.InvariantCulture);
+            DisplayText = FormatWithCommas(result.ToString(CultureInfo.InvariantCulture));
 
             _storedValue = result;
             _pendingOp = CalcOp.None;
@@ -218,8 +221,49 @@ namespace Calculator.ViewModels.Pages
             CalcOp.Div => "/",
             _ => ""
         };
-        
-        
+
+        private static string StripCommas(string s) => s.Replace(",", "");
+
+        private static string FormatWithCommas(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return "0";
+
+            if (raw == "-" || raw == "Error")
+                return raw;
+
+            bool negative = raw.StartsWith("-", StringComparison.Ordinal);
+            string body = negative ? raw[1..] : raw;
+
+            string intPart;
+            string fracPart = "";
+            bool hasDot = body.Contains('.', StringComparison.Ordinal);
+
+            if (hasDot)
+            {
+                var parts = body.Split('.', 2);
+                intPart = parts[0].Length == 0 ? "0" : parts[0];
+                fracPart = parts.Length > 1 ? parts[1] : "";
+            }
+            else
+            {
+                intPart = body.Length == 0 ? "0" : body;
+            }
+
+            if (!long.TryParse(intPart, NumberStyles.None, CultureInfo.InvariantCulture, out var n))
+                return raw;
+
+            string formattedInt = n.ToString("N0", CultureInfo.InvariantCulture);
+
+            string sign = negative ? "-" : "";
+            return hasDot ? $"{sign}{formattedInt}.{fracPart}" : $"{sign}{formattedInt}";
+        }
+
+        private void SetDisplayFromRaw(string raw)
+        {
+            DisplayText = FormatWithCommas(raw);
+        }
+
 
         #endregion
     }
