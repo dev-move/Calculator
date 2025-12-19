@@ -26,17 +26,16 @@ namespace Calculator.Views.Pages
 
         private void Root_Loaded(object sender, RoutedEventArgs e)
         {
-            Root.Focus(); // 포커스가 있어야 키 입력이 Root로 옵니다
+            Root.Focus();
         }
 
         private void Root_PreviewTextInput(object sender, TextCompositionEventArgs e)
         {
             if (DataContext is not CalculatorViewModel vm) return;
 
-            var t = e.Text; // 예: "+", "-", "*", "/", "1", ".", "="
+            var t = e.Text;
             if (t.Length != 1) return;
 
-            // 숫자 / 소수점
             if (char.IsDigit(t[0]) || t == ".")
             {
                 vm.InputCommand.Execute(t);
@@ -44,7 +43,6 @@ namespace Calculator.Views.Pages
                 return;
             }
 
-            // 메인 키보드 연산자 (Shift 조합 포함)
             if (t is "+" or "-" or "*" or "/")
             {
                 vm.OperateCommand.Execute(t);
@@ -52,7 +50,6 @@ namespace Calculator.Views.Pages
                 return;
             }
 
-            // 메인 키보드 '=' (Shift 안 누른 = 키)
             if (t == "=")
             {
                 vm.EqualsCommand.Execute(null);
